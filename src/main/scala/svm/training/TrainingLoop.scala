@@ -20,6 +20,9 @@ object TrainingLoop extends App{
     Vectors.sparse(featureVectorSize, indices.distinct.map(x => (x.toInt, 1.0)))
   }
 
+  val stemmer = new Stemmer_UTF8()
+  stemmer.loadStemmingRules("/home/inakov/IdeaProjects/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
   val sc = new SparkContext(conf)
@@ -35,7 +38,7 @@ object TrainingLoop extends App{
 
 
   val text = reviewsData.map(reviewData => reviewData._4)
-  val nonWordSplit = text.flatMap(t => t.split("""[^\p{L}\p{Nd}]+""").map(_.toLowerCase))
+  val nonWordSplit = text.flatMap(t => t.split("""[^\p{L}\p{Nd}]+""").map(_.toLowerCase).map(stemmer.stem))
   val tokenCounts = nonWordSplit.map(t => (t, 1)).reduceByKey(_ + _)
   val tokenCountsFiltered = tokenCounts.filter{
     case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 2
@@ -45,8 +48,16 @@ object TrainingLoop extends App{
   val allTermsBroadcast = sc.broadcast(termsDict)
 
   val ratingAndTokens = reviewsData.map(reviewData => (reviewData._2, reviewData._4))
-    .map(r => (r._1, r._2.split("""[^\p{L}\p{Nd}]+""").map(_.toLowerCase))).filter(_._2.nonEmpty)
+    .map(r => (r._1, r._2.split("""[^\p{L}\p{Nd}]+""").map(_.toLowerCase).map(stemmer.stem))).filter(_._2.nonEmpty)
 
+
+//  ratingAndTokens.filter(_._1 >= 4).flatMap(_._2.map(s => (s, 1))).reduceByKey(_ + _).filter{
+//    case (token, count) => !stopWords.contains(token) && token.length >= 2
+//  }.sortBy(-_._2).take(100).foreach(println)
+//
+  ratingAndTokens.filter(_._1 < 4).flatMap(_._2.map(s => (s, 1))).reduceByKey(_ + _).filter{
+    case (token, count) => !stopWords.contains(token) && token.length >= 2
+  }.sortBy(-_._2).take(100).foreach(println)
   val labeledData = ratingAndTokens.map { record =>
     val label = if (record._1 > 3) 1.0 else 0.0
     LabeledPoint(label, createTermsVector(record._2, allTermsBroadcast.value))
