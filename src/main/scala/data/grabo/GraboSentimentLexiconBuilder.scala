@@ -15,7 +15,7 @@ import scala.collection.mutable
 object GraboSentimentLexiconBuilder extends App{
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("/home/inakov/IdeaProjects/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
@@ -29,10 +29,6 @@ object GraboSentimentLexiconBuilder extends App{
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
     case review if review.size == 4 => (review(1).toInt, review(3))
   }.filter(_._2 != -1)
-
-//  val termsDict = tokenCountsFiltered.keys.zipWithIndex().collectAsMap()
-//  val allTermsBroadcast = sc.broadcast(termsDict)
-
 
   val sqlContext = new org.apache.spark.sql.SQLContext(sc)
   val sentenceDataFrame = sqlContext.createDataFrame(reviewsData).toDF("rating", "sentence")
@@ -57,11 +53,14 @@ object GraboSentimentLexiconBuilder extends App{
   }
   val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
+//  stemmedWords.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
+//    .filter(_._1 < 3).flatMap(_._2.map((_, 1))).reduceByKey(_ + _).sortBy(-_._2).take(500).foreach(println)
+
   val stemmedDocs = stemmedWords.rdd.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
     .filter(row => row._2.nonEmpty)
 
-  val positiveVocab = Set("страхот", "отлич", "качеств", "препоръчва", "прекрас", "супер", "вкусно")
-  val negativeVocab = Set("разочаров", "ужас", "никак", "лошо", "зле", "отвратител")
+  val positiveVocab = Set("перфект", "добър", "страхот", "отлич", "препоръчва", "прекрас", "чудес")
+  val negativeVocab = Set("разочаров", "ужас", "лошо", "лоша", "зле", "отвратител", "недовол")
 
   val importantWords = positiveVocab ++ negativeVocab
 
@@ -85,12 +84,16 @@ object GraboSentimentLexiconBuilder extends App{
   }
 
   val semanticOrientation = stemmedDocs.flatMap(_._2.distinct).distinct().map {term =>
-    val positiveAssoc = {
+    val positiveAssociations = {
       for(word <- positiveVocab) yield pmi(word, term)
-    }.sum
-    val negativeAssoc = {
+    }.filter(!_.isNaN())
+
+    val negativeAssociations = {
       for(word <- negativeVocab) yield pmi(word, term)
-    }.sum
+    }.filter(!_.isNaN())
+
+    val positiveAssoc = positiveAssociations.sum/positiveAssociations.size.toDouble
+    val negativeAssoc = negativeAssociations.sum/negativeAssociations.size.toDouble
 
     (term, positiveAssoc - negativeAssoc)
   }.filter(!_._2.isNaN).sortBy(-_._2).collect()
@@ -99,7 +102,7 @@ object GraboSentimentLexiconBuilder extends App{
     override val delimiter = '|'
   }
 
-  val writer = CSVWriter.open(new File("/home/inakov/Downloads/sentiment-analysis/grabo-pmilexicon.txt"))
+  val writer = CSVWriter.open(new File("/home/inakov/IdeaProjects/sentiment-analysis/grabo-pmilexicon.txt"))
 
   semanticOrientation.foreach(row => writer.writeRow(List(row._1, row._2)))
 

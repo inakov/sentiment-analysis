@@ -22,7 +22,7 @@ object TrainingLoop extends App{
   }
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("/home/inakov/IdeaProjects/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
