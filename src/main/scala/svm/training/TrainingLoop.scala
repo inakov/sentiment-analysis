@@ -107,8 +107,8 @@ object TrainingLoop extends App{
   val rec = correctPredictions/negCount
   val fscore = 2*(prec*rec/(prec+rec))
 
-  println(s"Total number of negatives: $negCount")
-  println(s"Number of correct predictions: $correctPredictions")
+  println(s"prec: $prec")
+  println(s"rec: $rec")
   println(s"F-score: $fscore")
 
 //  val metrics = new BinaryClassificationMetrics(scoreAndLabels)
