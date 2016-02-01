@@ -35,7 +35,7 @@ object TrainingLoop extends App{
   val reviewsRawData = sc.textFile("reviews.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
     case review if review.size == 4 => (review(1).toInt, review(3))
-  }.filter(_._2 != -1)
+  }.filter(data => data._1.toInt != -1 && data._1.toInt != 3)
 
 
   val sqlContext = new org.apache.spark.sql.SQLContext(sc)
