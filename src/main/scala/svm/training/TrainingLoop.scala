@@ -97,16 +97,27 @@ object TrainingLoop extends App{
 
   val scoreAndLabels = testData.map { point =>
     val score = model.predict(point.features)
-    (score, point.label)
+    val predicted = if (score > 0.5) 1 else 0
+    (predicted, point.label)
   }
+  val predNegCount = scoreAndLabels.filter(_._1 == 0).count().toDouble
+  val negCount = scoreAndLabels.filter(_._2 == 0).count().toDouble
+  val correctPredictions = scoreAndLabels.filter(result => result._2 == 0 && result._1 == 0).count().toDouble
+  val prec = correctPredictions/predNegCount
+  val rec = correctPredictions/negCount
+  val fscore = 2*(prec*rec/(prec+rec))
 
-  val metrics = new BinaryClassificationMetrics(scoreAndLabels)
-  val auROC = metrics.areaUnderROC()
-  val auPR = metrics.areaUnderPR()
+  println(s"Total number of negatives: $negCount")
+  println(s"Number of correct predictions: $correctPredictions")
+  println(s"F-score: $fscore")
 
-  println("Area under ROC = " + auROC)
-  println("Area under PR = " + auPR)
-  println(s"Training data size: ${trainingData.count()}")
-  println(s"Test data size: ${testData.count()}")
+//  val metrics = new BinaryClassificationMetrics(scoreAndLabels)
+//  val auROC = metrics.areaUnderROC()
+//  val auPR = metrics.areaUnderPR()
+//
+//  println("Area under ROC = " + auROC)
+//  println("Area under PR = " + auPR)
+//  println(s"Training data size: ${trainingData.count()}")
+//  println(s"Test data size: ${testData.count()}")
 
 }
