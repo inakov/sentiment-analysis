@@ -73,11 +73,10 @@ object TrainingLoop extends App{
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val reviewsRawData = sc.textFile("reviews.csv")
+  val reviewsRawData = sc.textFile("dataset.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
-    case review if review.size == 4 => (review(1).toInt, review(3))
-  }.filter(data => data._1.toInt != -1 && data._1.toInt != 3)
-
+    case review => (review(0).toInt, review(1))
+  }
 
   val sqlContext = new org.apache.spark.sql.SQLContext(sc)
   val sentenceDataFrame = sqlContext.createDataFrame(reviewsData).toDF("rating", "sentence")
