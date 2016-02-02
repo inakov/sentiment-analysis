@@ -36,6 +36,19 @@ object TrainingLoop extends App{
       sumOfPositives, sumOfNegatives, totalScore, maxScore, lastPositiveScore))
   }
 
+  def rawTextFeatures(sentance: String, emoticons: Map[String, Double]): Vector ={
+    val textFeaturesRegex =  """(?:[:=;][oO\-]?[Dd\(\[\)\]\(\]/\\OpP])""".r
+
+    val emoticionsAndPunctuation = textFeaturesRegex.findAllIn(sentance).toList
+    val emoticonsFromSentance = for(ecmoticon <- emoticionsAndPunctuation if emoticons.contains(ecmoticon)) yield emoticons(ecmoticon)
+
+    val numPositiveEmoticons = emoticonsFromSentance.count(_ == 1.0)
+    val numNegativeEmoticons = emoticonsFromSentance.count(_ == -1.0)
+
+
+    Vectors.dense(numPositiveEmoticons, numNegativeEmoticons)
+  }
+
   val stemmer = new Stemmer_UTF8()
   stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
@@ -50,10 +63,10 @@ object TrainingLoop extends App{
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-//  val maxDiffLexicon = sc.broadcast(sc.textFile("Maxdiff-Lexicon_BG.txt")
-//    .map(line => line.split("\t")).map { record =>
-//    (record(0), record(1).toDouble)
-//  }.collectAsMap())
+  val emoticonLexicon = sc.broadcast(sc.textFile("emoticons.txt")
+    .map(line => line.split("\t")).map { record =>
+    (record(0), record(1).toDouble)
+  }.collectAsMap())
 
   val graboLexicon = sc.broadcast(sc.textFile("grabo-pmilexicon.txt")
     .map(line => line.split("\t")).map { record =>
@@ -81,7 +94,7 @@ object TrainingLoop extends App{
     .setStopWords(stopWords)
 
   val filteredWords =
-    remover.transform(regexTokenized).select("words", "filteredWords", "rating")
+    remover.transform(regexTokenized).select("words", "filteredWords", "rating", "sentence")
 
   import org.apache.spark.sql.functions._
   val stemmerUdf = udf { terms: Seq[String] =>
@@ -94,7 +107,7 @@ object TrainingLoop extends App{
 
   val ngram = new NGram().setInputCol("stemmedWords").setOutputCol("ngrams")
   val ngramDataFrame = ngram.transform(stemmedWords)
-  val wordSplit = ngramDataFrame.flatMap(row => List(row.getAs[mutable.WrappedArray[String]](3), row.getAs[mutable.WrappedArray[String]](4)))
+  val wordSplit = ngramDataFrame.flatMap(row => List(row.getAs[mutable.WrappedArray[String]](4), row.getAs[mutable.WrappedArray[String]](5)))
     .flatMap(_.map(identity))
 
   val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
@@ -105,18 +118,21 @@ object TrainingLoop extends App{
   val termsDict = tokenCountsFiltered.keys.zipWithIndex().collectAsMap()
   val allTermsBroadcast = sc.broadcast(termsDict)
 
-  val ratingsAndTokens = ngramDataFrame.select("rating", "stemmedWords", "ngrams")
+  val ratingsAndTokens = ngramDataFrame.select("rating", "stemmedWords", "ngrams", "sentence")
     .map(row => (row.getAs[Int](0), row.getAs[mutable.WrappedArray[String]](1),
-      row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2)))
+      row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2), row.getAs[String](3)))
     .filter(_._2.nonEmpty)
 
 
   val labeledData = ratingsAndTokens.map { record =>
     val label = if (record._1 > 3) 1.0 else 0.0
+
+    val emoticonFeatures = rawTextFeatures(record._4, emoticonLexicon.value)
     val graboLexiconFeatures = createLexiconFeatures(record._2, graboLexicon.value)
     val twitterLexiconFeatures = createLexiconFeatures(record._2, unigramPmiTwitterLexicon.value)
     val bagOfWordsFeatures = createTermsVector(record._3, allTermsBroadcast.value)
-    val features = combine(Vectors.dense(graboLexiconFeatures.toArray ++ twitterLexiconFeatures.toArray).toSparse,
+    val features = combine(
+      Vectors.dense(emoticonFeatures.toArray ++ graboLexiconFeatures.toArray ++ twitterLexiconFeatures.toArray).toSparse,
       bagOfWordsFeatures.toSparse)
 
     LabeledPoint(label, features)
