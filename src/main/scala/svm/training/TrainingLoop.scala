@@ -2,10 +2,9 @@ package svm.training
 
 import org.apache.spark.ml.feature.{NGram, StopWordsRemover, RegexTokenizer}
 import org.apache.spark.mllib.classification.SVMWithSGD
-import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.{SparkContext, SparkConf}
-import org.apache.spark.mllib.linalg.{Vectors, Vector}
+import org.apache.spark.mllib.linalg.{SparseVector, Vectors, Vector}
 
 import scala.collection.{mutable, Map}
 
@@ -21,16 +20,45 @@ object TrainingLoop extends App{
     Vectors.sparse(featureVectorSize, indices.distinct.map(x => (x.toInt, 1.0)))
   }
 
+  def createLexiconFeatures(terms: Seq[String], lexicon: Map[String, Double]): Vector ={
+    val termsWeights = terms.map(lexicon.get).filter(_.isDefined).map(_.get)
+
+    val positiveCount = termsWeights.count(_ >= 0).toDouble
+    val negativeCount = termsWeights.count(_ < 0).toDouble
+    val lastWordPolarity = lexicon.getOrElse(terms.last, 0.0)
+    val lastPositiveScore = termsWeights.filter(_ >= 0).lastOption.getOrElse(0.0)
+    val sumOfPositives = termsWeights.filter(_ >= 0).sum
+    val sumOfNegatives = termsWeights.filter(_ < 0).sum
+    val totalScore = termsWeights.sum
+    val maxScore = if(termsWeights.nonEmpty) termsWeights.max else 0
+
+    Vectors.dense(Array(positiveCount, negativeCount, lastWordPolarity,
+      sumOfPositives, sumOfNegatives, totalScore, maxScore, lastPositiveScore))
+  }
+
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/IdeaProjects/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
   val sc = new SparkContext(conf)
 
-  val orderingDesc = Ordering.by[(String, Int), Int](_._2)
-  val orderingAsc = Ordering.by[(String, Int), Int](-_._2)
   val stopWords = sc.textFile("stopwords_bg.txt").collect()
+
+  val unigramPmiTwitterLexicon = sc.broadcast(sc.textFile("unigrams-pmilexicon-bg.txt")
+    .map(line => line.split("\t")).map { record =>
+    (record(0), record(1).toDouble)
+  }.collectAsMap())
+
+//  val maxDiffLexicon = sc.broadcast(sc.textFile("Maxdiff-Lexicon_BG.txt")
+//    .map(line => line.split("\t")).map { record =>
+//    (record(0), record(1).toDouble)
+//  }.collectAsMap())
+
+  val graboLexicon = sc.broadcast(sc.textFile("grabo-pmilexicon.txt")
+    .map(line => line.split("\t")).map { record =>
+    (record(0), record(1).toDouble)
+  }.collectAsMap())
 
   val reviewsRawData = sc.textFile("reviews.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
@@ -78,17 +106,38 @@ object TrainingLoop extends App{
   val allTermsBroadcast = sc.broadcast(termsDict)
 
   val ratingsAndTokens = ngramDataFrame.select("rating", "stemmedWords", "ngrams")
-    .map(row => (row.getAs[Int](0), row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2)))
+    .map(row => (row.getAs[Int](0), row.getAs[mutable.WrappedArray[String]](1),
+      row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2)))
+    .filter(_._2.nonEmpty)
+
 
   val labeledData = ratingsAndTokens.map { record =>
     val label = if (record._1 > 3) 1.0 else 0.0
-    LabeledPoint(label, createTermsVector(record._2, allTermsBroadcast.value))
+    val graboLexiconFeatures = createLexiconFeatures(record._2, graboLexicon.value)
+    val twitterLexiconFeatures = createLexiconFeatures(record._2, unigramPmiTwitterLexicon.value)
+    val bagOfWordsFeatures = createTermsVector(record._3, allTermsBroadcast.value)
+    val features = combine(Vectors.dense(graboLexiconFeatures.toArray ++ twitterLexiconFeatures.toArray).toSparse,
+      bagOfWordsFeatures.toSparse)
+
+    LabeledPoint(label, features)
+  }
+
+  def combine(v1: SparseVector, v2: SparseVector): SparseVector = {
+    val size = v1.size + v2.size
+    val maxIndex = v1.size
+    val indices = v1.indices ++ v2.indices.map(e => e + maxIndex)
+    val values = v1.values ++ v2.values
+    new SparseVector(size, indices, values)
   }
 
   val splits = labeledData.randomSplit(Array(0.67, 0.33), seed = 11L)
 
   val trainingData = splits(0).cache()
-  val testData = splits(1)
+  val negTest = splits(1).filter(_.label == 0)
+  val posTest = splits(1).filter(_.label == 1)
+
+  val samplingFactor = negTest.count().toDouble / posTest.count().toDouble
+  val testData = negTest ++ posTest.sample(false, samplingFactor, 1234L)
 
   val numberOfIterations = 100
   val model = SVMWithSGD.train(trainingData, numberOfIterations)
@@ -100,24 +149,19 @@ object TrainingLoop extends App{
     val predicted = if (score > 0.5) 1 else 0
     (predicted, point.label)
   }
-  val predNegCount = scoreAndLabels.filter(_._1 == 0).count().toDouble
-  val negCount = scoreAndLabels.filter(_._2 == 0).count().toDouble
-  val correctPredictions = scoreAndLabels.filter(result => result._2 == 0 && result._1 == 0).count().toDouble
-  val prec = correctPredictions/predNegCount
-  val rec = correctPredictions/negCount
-  val fscore = 2*(prec*rec/(prec+rec))
 
-  println(s"prec: $prec")
-  println(s"rec: $rec")
-  println(s"F-score: $fscore")
+  val predictedPositives = scoreAndLabels.filter(_._1 == 1).count().toDouble
+  val positiveCount = scoreAndLabels.filter(_._2 == 1).count().toDouble
+  val correctResults = scoreAndLabels.filter(result => result._2 == 1 && result._1 == 1).count().toDouble
 
-//  val metrics = new BinaryClassificationMetrics(scoreAndLabels)
-//  val auROC = metrics.areaUnderROC()
-//  val auPR = metrics.areaUnderPR()
-//
-//  println("Area under ROC = " + auROC)
-//  println("Area under PR = " + auPR)
-//  println(s"Training data size: ${trainingData.count()}")
-//  println(s"Test data size: ${testData.count()}")
+  val precision = correctResults/predictedPositives
+  val recall = correctResults/positiveCount
+  val fScore = 2*(precision*recall/(precision+recall))
 
+  println(s"Total number of test examples: ${testData.count()}")
+  println(s"Total count of positives in test data: $positiveCount")
+  println(s"Precision: $precision")
+  println(s"Recall: $recall")
+  println(s"F-Score: $fScore")
+  
 }

@@ -15,7 +15,7 @@ import scala.collection.mutable
 object GraboSentimentLexiconBuilder extends App{
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/IdeaProjects/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
@@ -57,10 +57,10 @@ object GraboSentimentLexiconBuilder extends App{
 //    .filter(_._1 < 3).flatMap(_._2.map((_, 1))).reduceByKey(_ + _).sortBy(-_._2).take(500).foreach(println)
 
   val stemmedDocs = stemmedWords.rdd.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
-    .filter(row => row._2.nonEmpty)
+    .filter(row => row._2.nonEmpty).randomSplit(Array(0.67, 0.33), seed = 11L)(0).cache()
 
-  val positiveVocab = Set("перфект", "добър", "страхот", "отлич", "препоръчва", "прекрас", "чудес")
-  val negativeVocab = Set("разочаров", "ужас", "лошо", "лоша", "зле", "отвратител", "недовол")
+  val positiveVocab = Set("перфект", "добър", "страхот", "отлич", "препоръчва", "прекрас", "чудес", "удоволстви", "професионализ", "браво", "усмихн")
+  val negativeVocab = Set("разочаров", "ужас", "лошо", "зле", "отвратител", "недовол")
 
   val importantWords = positiveVocab ++ negativeVocab
 
@@ -99,10 +99,10 @@ object GraboSentimentLexiconBuilder extends App{
   }.filter(!_._2.isNaN).sortBy(-_._2).collect()
 
   implicit object MyFormat extends DefaultCSVFormat {
-    override val delimiter = '|'
+    override val delimiter = '\t'
   }
 
-  val writer = CSVWriter.open(new File("/home/inakov/IdeaProjects/sentiment-analysis/grabo-pmilexicon.txt"))
+  val writer = CSVWriter.open(new File("/home/inakov/Downloads/sentiment-analysis/grabo-pmilexicon.txt"))
 
   semanticOrientation.foreach(row => writer.writeRow(List(row._1, row._2)))
 

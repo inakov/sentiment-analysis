@@ -1,0 +1,39 @@
+Only unigrams pmi twitter lexicon
+Total number of test examples: 6555
+Total count of positives in test data: 3229.0
+Precision: 0.5844185515193054
+Recall: 0.7921957262310313
+F-Score: 0.6726268735209046
+
+
+Only Maxdiff lexicon
+Total number of test examples: 6555
+Total count of positives in test data: 3229.0
+Precision: 0.5554981930820857
+Recall: 0.6664602043976463
+F-Score: 0.6059411516260734
+
+
+Only automatically generated grabo lexicon
+Total number of test examples: 6555
+Total count of positives in test data: 3229.0
+Precision: 0.754907306434024
+Recall: 0.8575410343759677
+F-Score: 0.8029578077424967
+
+
+Grabo lexicon + unigrams pmi twitter lexicon
+Total number of test examples: 6555
+Total count of positives in test data: 3229.0
+Precision: 0.7426027755957056
+Recall: 0.8782904924125116
+F-Score: 0.8047673098751419
+
+
+Unigrams & bigrams bag of word + Grabo lexicon + unigrams pmi twitter lexicon
+Total number of test examples: 6555
+Total count of positives in test data: 3229.0
+Precision: 0.7452212621105001
+Recall: 0.8813874264478166
+F-Score: 0.8076049943246312
+
