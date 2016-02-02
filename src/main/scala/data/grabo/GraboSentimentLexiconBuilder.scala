@@ -25,10 +25,10 @@ object GraboSentimentLexiconBuilder extends App{
   val orderingAsc = Ordering.by[(String, Int), Int](-_._2)
   val stopWords = sc.textFile("stopwords_bg.txt").collect()
 
-  val reviewsRawData = sc.textFile("reviews.csv")
+  val reviewsRawData = sc.textFile("training-data.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
-    case review if review.size == 4 => (review(1).toInt, review(3))
-  }.filter(_._2 != -1)
+    case review => (review(0).toInt, review(1))
+  }
 
   val sqlContext = new org.apache.spark.sql.SQLContext(sc)
   val sentenceDataFrame = sqlContext.createDataFrame(reviewsData).toDF("rating", "sentence")
