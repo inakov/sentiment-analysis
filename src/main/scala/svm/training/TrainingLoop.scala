@@ -49,6 +49,14 @@ object TrainingLoop extends App{
     Vectors.dense(numPositiveEmoticons, numNegativeEmoticons)
   }
 
+  def combine(v1: SparseVector, v2: SparseVector): SparseVector = {
+    val size = v1.size + v2.size
+    val maxIndex = v1.size
+    val indices = v1.indices ++ v2.indices.map(e => e + maxIndex)
+    val values = v1.values ++ v2.values
+    new SparseVector(size, indices, values)
+  }
+
   val stemmer = new Stemmer_UTF8()
   stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
 
@@ -73,13 +81,20 @@ object TrainingLoop extends App{
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val reviewsRawData = sc.textFile("dataset.csv")
-  val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
+  val trainingRawData = sc.textFile("training-data.csv")
+  val trainingData = trainingRawData.map(line => line.split("~")).collect {
     case review => (review(0).toInt, review(1))
-  }
+  }.cache()
+
+  val testRawData = sc.textFile("test-data.csv").map(line => line.split("~")).collect {
+    case review => (review(0).toInt, review(1))
+  }.cache()
 
   val sqlContext = new org.apache.spark.sql.SQLContext(sc)
-  val sentenceDataFrame = sqlContext.createDataFrame(reviewsData).toDF("rating", "sentence")
+
+  val sentenceDataFrame = sqlContext.createDataFrame(trainingData).toDF("rating", "sentence")
+  val testRawDataFrame = sqlContext.createDataFrame(testRawData).toDF("rating", "sentence")
+
   val regexTokenizer = new RegexTokenizer()
     .setInputCol("sentence")
     .setOutputCol("words")
@@ -95,35 +110,43 @@ object TrainingLoop extends App{
   val filteredWords =
     remover.transform(regexTokenized).select("words", "filteredWords", "rating", "sentence")
 
+  val filteredTestData =
+    remover.transform(regexTokenizer.transform(testRawDataFrame)).select("words", "filteredWords", "rating", "sentence")
+
   import org.apache.spark.sql.functions._
   val stemmerUdf = udf { terms: Seq[String] =>
     terms.map(stemmer.stem)
   }
-  val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
-  val stemmedDocs = stemmedWords.rdd.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
-    .filter(row => row._2.nonEmpty)
+
+  val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
+  val stemmedTestData = filteredTestData.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
   val ngram = new NGram().setInputCol("stemmedWords").setOutputCol("ngrams")
-  val ngramDataFrame = ngram.transform(stemmedWords)
-  val wordSplit = ngramDataFrame.flatMap(row => List(row.getAs[mutable.WrappedArray[String]](4), row.getAs[mutable.WrappedArray[String]](5)))
-    .flatMap(_.map(identity))
+  val trainingDataFrame = ngram.transform(stemmedWords).cache()
+
+  val testDataTokenized = ngram.transform(stemmedTestData).select("rating", "stemmedWords", "ngrams", "sentence")
+    .map(row => (row.getAs[Int](0), row.getAs[mutable.WrappedArray[String]](1),
+      row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2), row.getAs[String](3)))
+    .filter(_._2.nonEmpty).cache()
+  
+  val wordSplit = trainingDataFrame.flatMap(row => row.getAs[mutable.WrappedArray[String]](4) ++ row.getAs[mutable.WrappedArray[String]](5))
 
   val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
   val tokenCountsFiltered = tokenCounts.filter{
-    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 5
+    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 3
   }
 
   val termsDict = tokenCountsFiltered.keys.zipWithIndex().collectAsMap()
   val allTermsBroadcast = sc.broadcast(termsDict)
 
-  val ratingsAndTokens = ngramDataFrame.select("rating", "stemmedWords", "ngrams", "sentence")
+  val trainingDataTokenized = trainingDataFrame.select("rating", "stemmedWords", "ngrams", "sentence")
     .map(row => (row.getAs[Int](0), row.getAs[mutable.WrappedArray[String]](1),
       row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2), row.getAs[String](3)))
-    .filter(_._2.nonEmpty)
+    .filter(_._2.nonEmpty).cache()
 
 
-  val labeledData = ratingsAndTokens.map { record =>
+  val labeledTrainingData = trainingDataTokenized.map { record =>
     val label = if (record._1 > 3) 1.0 else 0.0
 
     val emoticonFeatures = rawTextFeatures(record._4, emoticonLexicon.value)
@@ -137,46 +160,49 @@ object TrainingLoop extends App{
     LabeledPoint(label, features)
   }
 
-  def combine(v1: SparseVector, v2: SparseVector): SparseVector = {
-    val size = v1.size + v2.size
-    val maxIndex = v1.size
-    val indices = v1.indices ++ v2.indices.map(e => e + maxIndex)
-    val values = v1.values ++ v2.values
-    new SparseVector(size, indices, values)
-  }
+  val labeledTestData = testDataTokenized.map { record =>
+    val label = if (record._1 > 3) 1.0 else 0.0
 
-  val splits = labeledData.randomSplit(Array(0.67, 0.33), seed = 11L)
+    val emoticonFeatures = rawTextFeatures(record._4, emoticonLexicon.value)
+    val graboLexiconFeatures = createLexiconFeatures(record._2, graboLexicon.value)
+    val twitterLexiconFeatures = createLexiconFeatures(record._2, unigramPmiTwitterLexicon.value)
+    val bagOfWordsFeatures = createTermsVector(record._3, allTermsBroadcast.value)
+    val features = combine(
+      Vectors.dense(emoticonFeatures.toArray ++ graboLexiconFeatures.toArray ++ twitterLexiconFeatures.toArray).toSparse,
+      bagOfWordsFeatures.toSparse)
 
-  val trainingData = splits(0).cache()
-  val negTest = splits(1).filter(_.label == 0)
-  val posTest = splits(1).filter(_.label == 1)
-
-  val samplingFactor = negTest.count().toDouble / posTest.count().toDouble
-  val testData = negTest ++ posTest.sample(false, samplingFactor, 1234L)
+    LabeledPoint(label, features)
+  }.cache()
 
   val numberOfIterations = 100
-  val model = SVMWithSGD.train(trainingData, numberOfIterations)
+  val model = SVMWithSGD.train(labeledTrainingData, numberOfIterations)
 
   model.clearThreshold()
 
-  val scoreAndLabels = testData.map { point =>
+  val scoreAndLabels = labeledTestData.map { point =>
     val score = model.predict(point.features)
     val predicted = if (score > 0.5) 1 else 0
     (predicted, point.label)
   }
 
-  val predictedPositives = scoreAndLabels.filter(_._1 == 1).count().toDouble
-  val positiveCount = scoreAndLabels.filter(_._2 == 1).count().toDouble
-  val correctResults = scoreAndLabels.filter(result => result._2 == 1 && result._1 == 1).count().toDouble
+  val predictedNegatives = scoreAndLabels.filter(_._1 == 0).count().toDouble
+  val negativeCount = scoreAndLabels.filter(_._2 == 0).count().toDouble
+  val correctResults = scoreAndLabels.filter(result => result._2 == 0 && result._1 == 0).count().toDouble
 
-  val precision = correctResults/predictedPositives
-  val recall = correctResults/positiveCount
+  val precision = correctResults/predictedNegatives
+  val recall = correctResults/negativeCount
   val fScore = 2*(precision*recall/(precision+recall))
 
-  println(s"Total number of test examples: ${testData.count()}")
-  println(s"Total count of positives in test data: $positiveCount")
+  println(s"Total count of training examples ${labeledTrainingData.count()}")
+  println(s"Total count of negatives in training data ${labeledTrainingData.filter(_.label == 0.0).count()}")
+  println(s"Total count of positives in training data ${labeledTrainingData.filter(_.label == 1.0).count()}")
+
+  println(s"Total number of test examples: ${labeledTestData.count()}")
+  println(s"Total count of negatives in test data: $negativeCount")
+  println(s"Total count of positives in test data: ${scoreAndLabels.filter(_._2 == 1).count()}")
+
   println(s"Precision: $precision")
   println(s"Recall: $recall")
-  println(s"F-Score: $fScore")
+  println(s"F-Score for negatives: $fScore")
   
 }

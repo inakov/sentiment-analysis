@@ -37,3 +37,15 @@ Precision: 0.7452212621105001
 Recall: 0.8813874264478166
 F-Score: 0.8076049943246312
 
+Final results:
+Total count of training examples 24459
+Total count of negatives in training data 6814
+Total count of positives in training data 17645
+
+Total number of test examples: 6629
+Total count of negatives in test data: 3356.0
+Total count of positives in test data: 3273
+
+Precision: 0.8306382978723404
+Recall: 0.8724672228843862
+F-Score for negatives: 0.8510390931550648
