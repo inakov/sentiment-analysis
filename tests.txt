@@ -46,6 +46,6 @@ Total number of test examples: 6629
 Total count of negatives in test data: 3356.0
 Total count of positives in test data: 3273
 
-Precision: 0.8306382978723404
-Recall: 0.8724672228843862
-F-Score for negatives: 0.8510390931550648
+Precision: 0.834088335220838
+Recall: 0.8778307508939214
+F-Score for negatives: 0.8554006968641116

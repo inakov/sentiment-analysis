@@ -179,6 +179,7 @@ object TrainingLoop extends App{
 
   model.clearThreshold()
 
+
   val scoreAndLabels = labeledTestData.map { point =>
     val score = model.predict(point.features)
     val predicted = if (score > 0.5) 1 else 0

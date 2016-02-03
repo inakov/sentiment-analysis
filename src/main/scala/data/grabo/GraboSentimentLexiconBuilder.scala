@@ -59,7 +59,7 @@ object GraboSentimentLexiconBuilder extends App{
   val stemmedDocs = stemmedWords.rdd.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
     .filter(row => row._2.nonEmpty).randomSplit(Array(0.67, 0.33), seed = 11L)(0).cache()
 
-  val positiveVocab = Set("перфект", "добър", "страхот", "отлич", "препоръчва", "прекрас", "чудес", "удоволстви", "професионализ", "браво", "усмихн")
+  val positiveVocab = Set("перфект", "страхот", "отлич", "прекрас", "чудес", "удоволстви", "професионализ", "браво")
   val negativeVocab = Set("разочаров", "ужас", "лошо", "зле", "отвратител", "недовол")
 
   val importantWords = positiveVocab ++ negativeVocab
