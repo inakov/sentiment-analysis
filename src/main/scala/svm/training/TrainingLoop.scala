@@ -118,7 +118,6 @@ object TrainingLoop extends App{
     terms.map(stemmer.stem)
   }
 
-
   val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
   val stemmedTestData = filteredTestData.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
@@ -130,12 +129,15 @@ object TrainingLoop extends App{
       row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2), row.getAs[String](3)))
     .filter(_._2.nonEmpty).cache()
   
-  val wordSplit = trainingDataFrame.flatMap(row => row.getAs[mutable.WrappedArray[String]](4) ++ row.getAs[mutable.WrappedArray[String]](5))
+//  val wordSplit = trainingDataFrame.flatMap(row => row.getAs[mutable.WrappedArray[String]](4) ++ row.getAs[mutable.WrappedArray[String]](5))
+//
+//  val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
+//  val tokenCountsFiltered = tokenCounts.filter{
+//    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 3
+//  }
 
-  val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
-  val tokenCountsFiltered = tokenCounts.filter{
-    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 3
-  }
+//  tokenCountsFiltered.saveAsObjectFile("model/grabo-vocabulary")
+  val tokenCountsFiltered = sc.objectFile[(String, Int)]("model/grabo-vocabulary")
 
   val termsDict = tokenCountsFiltered.keys.zipWithIndex().collectAsMap()
   val allTermsBroadcast = sc.broadcast(termsDict)
@@ -179,6 +181,7 @@ object TrainingLoop extends App{
 
   model.clearThreshold()
 
+//  model.save(sc, "model/grabo-sentiment-model")
 
   val scoreAndLabels = labeledTestData.map { point =>
     val score = model.predict(point.features)
