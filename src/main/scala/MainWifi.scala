@@ -25,7 +25,7 @@ object MainWifi extends App{
 //  println(s"Number of phones with more then 5 checks ${countByUser.filter(_._2 > 5).count()}")
 //  countByUser.collect().foreach(println)
 
-  print(groupByUser.filter(_._2.size > 5).map(_._2.map(_._4.toInt)).map(mean(_)).collect().length)//.foreach(println)
+  groupByUser.filter(_._2.size > 5).map(_._2.map(_._4.toInt)).map(mean(_)).filter(_ > -67).collect().foreach(println)
 
   def mean[T](item:Traversable[T])(implicit n:Numeric[T]) = {
     n.toDouble(item.sum) / item.size.toDouble
