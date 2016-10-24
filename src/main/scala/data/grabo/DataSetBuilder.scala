@@ -10,7 +10,7 @@ import scala.xml.XML
  * Created by inakov on 16-1-28.
  */
 object DataSetBuilder extends App{
-  val graboXmlData = XML.loadFile("/home/inakov/Downloads/sentiment-analysis/src/main/resources/grabo.xml")
+  val graboXmlData = XML.loadFile("src/main/resources/dataset/grabo.xml")
 
   val businessData = (graboXmlData \ "business").map{ business =>
     val cities = (business \ "cities").flatMap{ city =>
@@ -35,7 +35,7 @@ object DataSetBuilder extends App{
     override val delimiter = '~'
   }
 
-  val writer = CSVWriter.open(new File("/home/inakov/Downloads/sentiment-analysis/reviews.csv"))
+  val writer = CSVWriter.open(new File("src/main/resources/dataset/reviews.csv"))
 
 //  businessData.foreach{ business =>
 //    val line = List(business.id.toString, business.name.trim, business.category.trim, business.cities.mkString(" "))

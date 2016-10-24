@@ -58,35 +58,35 @@ object TrainingLoop extends App{
   }
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
   val sc = new SparkContext(conf)
 
-  val stopWords = sc.textFile("stopwords_bg.txt").collect()
+  val stopWords = sc.textFile("src/main/resources/stopwords_bg.txt").collect()
 
-  val unigramPmiTwitterLexicon = sc.broadcast(sc.textFile("unigrams-pmilexicon-bg.txt")
+  val unigramPmiTwitterLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/unigrams-pmilexicon-bg.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val emoticonLexicon = sc.broadcast(sc.textFile("emoticons.txt")
+  val emoticonLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/emoticons.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val graboLexicon = sc.broadcast(sc.textFile("grabo-pmilexicon.txt")
+  val graboLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/grabo-pmilexicon.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val trainingRawData = sc.textFile("training-data.csv")
+  val trainingRawData = sc.textFile("src/main/resources/dataset/training-data.csv")
   val trainingData = trainingRawData.map(line => line.split("~")).collect {
     case review => (review(0).toInt, review(1))
   }.cache()
 
-  val testRawData = sc.textFile("test-data.csv").map(line => line.split("~")).collect {
+  val testRawData = sc.textFile("src/main/resources/dataset/test-data.csv").map(line => line.split("~")).collect {
     case review => (review(0).toInt, review(1))
   }.cache()
 

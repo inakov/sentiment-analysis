@@ -25,7 +25,10 @@ public class Stemmer_UTF8 {
 
     public void loadStemmingRules(String fileName) throws Exception {
         stemmingRules.clear();
-        FileInputStream fis = new FileInputStream(fileName);
+
+        File f1 = new File(fileName);
+        final String path = f1.getAbsolutePath();
+        FileInputStream fis = new FileInputStream(path);
         BufferedReader br = new BufferedReader(new InputStreamReader(fis));
         String s = null;
         while ((s = br.readLine()) != null) {

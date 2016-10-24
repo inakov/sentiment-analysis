@@ -15,7 +15,7 @@ import scala.collection.mutable
 object GraboSentimentLexiconBuilder extends App{
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
@@ -23,9 +23,9 @@ object GraboSentimentLexiconBuilder extends App{
 
   val orderingDesc = Ordering.by[(String, Int), Int](_._2)
   val orderingAsc = Ordering.by[(String, Int), Int](-_._2)
-  val stopWords = sc.textFile("stopwords_bg.txt").collect()
+  val stopWords = sc.textFile("src/main/resources/stopwords_bg.txt").collect()
 
-  val reviewsRawData = sc.textFile("training-data.csv")
+  val reviewsRawData = sc.textFile("src/main/resources/dataset/training-data.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
     case review => (review(0).toInt, review(1))
   }
@@ -102,7 +102,7 @@ object GraboSentimentLexiconBuilder extends App{
     override val delimiter = '\t'
   }
 
-  val writer = CSVWriter.open(new File("/home/inakov/Downloads/sentiment-analysis/grabo-pmilexicon.txt"))
+  val writer = CSVWriter.open(new File("src/main/resources/lexicon/grabo-pmilexicon.txt"))
 
   semanticOrientation.foreach(row => writer.writeRow(List(row._1, row._2)))
 

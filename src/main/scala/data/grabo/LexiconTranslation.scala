@@ -33,7 +33,7 @@ object LexiconTranslation extends App{
     override val delimiter = '\t'
   }
 
-  val writer = CSVWriter.open(new File("/home/inakov/IdeaProjects/sentiment-analysis/unigrams-pmilexicon-bg.txt"))
+  val writer = CSVWriter.open(new File("resources/lexicons/unigrams-pmilexicon-bg.txt"))
 
   resultLexicon.foreach(row => writer.writeRow(List(row._1, row._2, row._3, row._4)))
 

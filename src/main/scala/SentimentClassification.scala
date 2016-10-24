@@ -56,25 +56,25 @@ object SentimentClassification extends App{
   }
 
   val stemmer = new Stemmer_UTF8()
-  stemmer.loadStemmingRules("/home/inakov/Downloads/sentiment-analysis/src/main/resources/stem_rules_context_2_UTF-8.txt")
+  stemmer.loadStemmingRules("src/main/resources/stem_rules_context_2_UTF-8.txt")
 
   val conf = new SparkConf().setAppName("Sentiment Analysis - SVM Training Loop")
     .setMaster("local[4]").set("spark.executor.memory", "1g")
   val sc = new SparkContext(conf)
 
-  val stopWords = sc.textFile("stopwords_bg.txt").collect()
+  val stopWords = sc.textFile("src/main/resources/stopwords_bg.txt").collect()
 
-  val unigramPmiTwitterLexicon = sc.broadcast(sc.textFile("unigrams-pmilexicon-bg.txt")
+  val unigramPmiTwitterLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/unigrams-pmilexicon-bg.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val emoticonLexicon = sc.broadcast(sc.textFile("emoticons.txt")
+  val emoticonLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/emoticons.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
 
-  val graboLexicon = sc.broadcast(sc.textFile("grabo-pmilexicon.txt")
+  val graboLexicon = sc.broadcast(sc.textFile("src/main/resources/lexicons/grabo-pmilexicon.txt")
     .map(line => line.split("\t")).map { record =>
     (record(0), record(1).toDouble)
   }.collectAsMap())
@@ -87,7 +87,7 @@ object SentimentClassification extends App{
   val sentimentModel = SVMModel.load(sc, "model/grabo-sentiment-model")
 
   while(true){
-    println("Моля, въведете вашият коментар:")
+    println(Console.WHITE + "Моля, въведете вашият коментар:")
     val comment = StdIn.readLine()
 
     val tokens = comment.split("""[^\p{L}\p{Nd}]+""").map(_.toLowerCase)
@@ -107,8 +107,8 @@ object SentimentClassification extends App{
     val score = sentimentModel.predict(features)
 
     print("Вашият коментар беше оценен като: ")
-    if (score > 0.5) println("+ Положителен")
-    else println(" - Отрицателен")
+    if (score > 0.5) println(Console.GREEN + "+ Положителен")
+    else println(Console.RED + " - Отрицателен")
   }
 
 }
