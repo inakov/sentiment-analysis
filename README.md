@@ -26,14 +26,17 @@ Semantic orientation lexicon
 
 We generated a [lexicon](https://github.com/inakov/sentiment-analysis/blob/master/src/main/resources/lexicons/grabo-pmilexicon.txt)
 with the semantic orientation of common words from the data set based
-on the [Pointwise Mutual Information](https://en.wikipedia.org/wiki/Pointwise_mutual_information).
-The PMI counts probability of a word to co-occurrences with positive or negative word. The positive and negative words
-are manualy picked from the data set for example:
+on the Sentiment Score of the tokens in the training set.
 
-- V+ {“перфектно”, “страхотно”, “отлично”, “браво” ...}
-- V- {“ужасно”, “лошо”, “зле”, “разочарован” ...}
+SentimentScore(w) = PMI(w, positive) - PMI(w, negative)
 
-![alt tag](https://wikimedia.org/api/rest_v1/media/math/render/svg/ff54cfce726857db855d4dd0a9dee2c6a5e7be99)
+PMI stands for [Pointwise Mutual Information](https://en.wikipedia.org/wiki/Pointwise_mutual_information).
+
+_PMI(w, positive) = log2((freq(w, positive) * N )/(freq(w) * freq(positive)))_
+
+_freq(w, positive)_ is the number of times a term _w_ occurs in a positive review, _freq(w)_ is 
+the total frequency of term _w_, _freq(positive)_ is the total number of tokens in positive reviews and 
+_N_ is the total number of tokens.
 
 Classifier and Features
 -----------------------
