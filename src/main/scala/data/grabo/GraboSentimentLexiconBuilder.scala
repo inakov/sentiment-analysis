@@ -25,7 +25,7 @@ object GraboSentimentLexiconBuilder extends App{
   val orderingAsc = Ordering.by[(String, Int), Int](-_._2)
   val stopWords = sc.textFile("src/main/resources/stopwords_bg.txt").collect()
 
-  val reviewsRawData = sc.textFile("src/main/resources/dataset/training-data.csv")
+  val reviewsRawData = sc.textFile("src/main/resources/dataset/training-set.csv")
   val reviewsData = reviewsRawData.map(line => line.split("~")).collect {
     case review => (review(0).toInt, review(1))
   }
@@ -54,13 +54,13 @@ object GraboSentimentLexiconBuilder extends App{
   val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
   val tokenFreq = stemmedWords.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
-    .flatMap(review => review._2.map{
-      if (review._1 > 3) (_, (1, 0))
-      else (_, (1, 0))
+    .flatMap(review => review._2.map{token=>
+      if (review._1 > 3) (token, (1, 0))
+      else (token, (0, 1))
     }).reduceByKey((f1, f2 )=> (f1._1 + f2._1, f1._2 + f2._2))
     .filter(token => token._2._1 + token._2._2 > 5)
 
-  val (posFreq, negFreq) = tokenFreq.map(_._2).reduce((f1, f2) => (f1._1 + f2._2, f1._2 + f2._2))
+  val (posFreq, negFreq) = tokenFreq.map(_._2).reduce((f1, f2) => (f1._1 + f2._1, f1._2 + f2._2))
   val totalFreq = posFreq + negFreq
 
   def sentimentScore(freqWPositive: Double,

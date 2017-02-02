@@ -129,15 +129,15 @@ object TrainingLoop extends App{
       row.getAs[mutable.WrappedArray[String]](1) ++ row.getAs[mutable.WrappedArray[String]](2), row.getAs[String](3)))
     .filter(_._2.nonEmpty).cache()
   
-//  val wordSplit = trainingDataFrame.flatMap(row => row.getAs[mutable.WrappedArray[String]](4) ++ row.getAs[mutable.WrappedArray[String]](5))
-//
-//  val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
-//  val tokenCountsFiltered = tokenCounts.filter{
-//    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 3
-//  }
+  val wordSplit = trainingDataFrame.flatMap(row => row.getAs[mutable.WrappedArray[String]](4) ++ row.getAs[mutable.WrappedArray[String]](5))
 
-//  tokenCountsFiltered.saveAsObjectFile("model/grabo-vocabulary")
-  val tokenCountsFiltered = sc.objectFile[(String, Int)]("model/grabo-vocabulary")
+  val tokenCounts = wordSplit.map(t => (t, 1)).reduceByKey(_ + _)
+  val tokenCountsFiltered = tokenCounts.filter{
+    case (token, count) => !stopWords.contains(token) && token.length >= 2 && count >= 3
+  }
+
+  tokenCountsFiltered.saveAsObjectFile("model/grabo-vocabulary")
+//  val tokenCountsFiltered = sc.objectFile[(String, Int)]("model/grabo-vocabulary")
 
   val termsDict = tokenCountsFiltered.keys.zipWithIndex().collectAsMap()
   val allTermsBroadcast = sc.broadcast(termsDict)
