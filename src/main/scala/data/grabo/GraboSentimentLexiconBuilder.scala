@@ -53,60 +53,46 @@ object GraboSentimentLexiconBuilder extends App{
   }
   val stemmedWords = filteredWords.select(col("*"), stemmerUdf(col("filteredWords")).as("stemmedWords"))
 
-//  stemmedWords.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
-//    .filter(_._1 < 3).flatMap(_._2.map((_, 1))).reduceByKey(_ + _).sortBy(-_._2).take(500).foreach(println)
+  val tokenFreq = stemmedWords.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
+    .flatMap(review => review._2.map{
+      if (review._1 > 3) (_, (1, 0))
+      else (_, (1, 0))
+    }).reduceByKey((f1, f2 )=> (f1._1 + f2._1, f1._2 + f2._2))
+    .filter(token => token._2._1 + token._2._2 > 5)
 
-  val stemmedDocs = stemmedWords.rdd.map(row => (row(2).toString.toInt, row(3).asInstanceOf[mutable.WrappedArray[String]]))
-    .filter(row => row._2.nonEmpty).randomSplit(Array(0.67, 0.33), seed = 11L)(0).cache()
+  val (posFreq, negFreq) = tokenFreq.map(_._2).reduce((f1, f2) => (f1._1 + f2._2, f1._2 + f2._2))
+  val totalFreq = posFreq + negFreq
 
-  val positiveVocab = Set("перфект", "страхот", "отлич", "прекрас", "чудес", "удоволстви", "професионализ", "браво")
-  val negativeVocab = Set("разочаров", "ужас", "лошо", "зле", "отвратител", "недовол")
+  def sentimentScore(freqWPositive: Double,
+                     freqWNegative: Double): Double = {
 
-  val importantWords = positiveVocab ++ negativeVocab
+    def pmi(freqWSentiment: Double, tokenCount: Double, freqW: Double, freqSentiment: Double): Double = {
+      def log2(x: Double) = scala.math.log(x)/scala.math.log(2)
+      log2((freqWSentiment*tokenCount)/(freqW*freqSentiment))
+    }
+    val totalWFreq = freqWPositive + freqWNegative
 
-  val numDocuments = stemmedDocs.count().toDouble
+    val posPmi = if(freqWPositive != 0){
+      pmi(freqWPositive, totalFreq, totalWFreq, posFreq)
+    } else 0.0
 
-  val termProb = stemmedDocs.map(_._2.distinct).flatMap(_.map((_, 1))).reduceByKey(_ + _)
-    .map(term => (term._1, term._2.toDouble/numDocuments)).collectAsMap()
+    val negPmi = if(freqWNegative != 0){
+      pmi(freqWNegative, totalFreq, totalWFreq, negFreq)
+    }else 0.0
 
-  val termProbComb = stemmedDocs.map(_._2.distinct).flatMap{document =>
-    for(word <- importantWords; term <- document if document.contains(word)) yield (word+"_"+term , 1)
-  }.reduceByKey(_ + _).map(term => (term._1, term._2.toDouble/numDocuments)).collectAsMap()
-
-  def pmi(importantWord: String, term: String): Double = {
-    def log2(x: Double) = scala.math.log(x)/scala.math.log(2)
-
-    val denom = termProb(importantWord) * termProb(term)
-    val combinedProb = termProbComb.getOrElse(importantWord+"_"+term, 0d)
-
-    val pmiValue = log2(combinedProb/denom)
-    pmiValue/(-log2(combinedProb))
+    posPmi - negPmi
   }
 
-  val semanticOrientation = stemmedDocs.flatMap(_._2.distinct).distinct().map {term =>
-    val positiveAssociations = {
-      for(word <- positiveVocab) yield pmi(word, term)
-    }.filter(!_.isNaN())
-
-    val negativeAssociations = {
-      for(word <- negativeVocab) yield pmi(word, term)
-    }.filter(!_.isNaN())
-
-    val positiveAssoc = positiveAssociations.sum/positiveAssociations.size.toDouble
-    val negativeAssoc = negativeAssociations.sum/negativeAssociations.size.toDouble
-
-    (term, positiveAssoc - negativeAssoc)
-  }.filter(!_._2.isNaN).sortBy(-_._2).collect()
+  val sentimentOrientation =
+    tokenFreq.map(token => (token._1, sentimentScore(token._2._1, token._2._2)))
+    .sortBy(-_._2).collect()
 
   implicit object MyFormat extends DefaultCSVFormat {
     override val delimiter = '\t'
   }
 
-  val writer = CSVWriter.open(new File("src/main/resources/lexicon/grabo-pmilexicon.txt"))
-
-  semanticOrientation.foreach(row => writer.writeRow(List(row._1, row._2)))
-
+  val writer = CSVWriter.open(new File("/home/inakov/GitHub/sentiment-analysis/src/main/resources/lexicons/grabo-pmilexicon.txt"))
+  sentimentOrientation.foreach(row => writer.writeRow(List(row._1, row._2)))
   writer.close()
   println("Done")
-
 }
